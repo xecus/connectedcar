@@ -9,6 +9,10 @@ import (
 
 func main() {
 
+}
+
+func main2() {
+
 	globalConfig, err := config.NewConfig()
 	if err != nil {
 		panic(err)

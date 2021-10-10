@@ -23,11 +23,9 @@ func SshdWithPortForwarding(globalConfig *config.GlobalConfig) {
 		}),
 		Addr: ":2222",
 		Handler: ssh.Handler(func(s ssh.Session) {
-
 			io.WriteString(s, "Remote forwarding available...\n")
-			util.GenerateSessionHandler()(s)
+			util.GenerateSessionHandler(globalConfig)(s)
 			//select {}
-
 		}),
 		ReversePortForwardingCallback: ssh.ReversePortForwardingCallback(func(ctx ssh.Context, host string, port uint32) bool {
 			log.Println("attempt to bind", host, port, "granted")
@@ -37,7 +35,7 @@ func SshdWithPortForwarding(globalConfig *config.GlobalConfig) {
 			"tcpip-forward":        forwardHandler.HandleSSHRequest,
 			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
 		},
-		PublicKeyHandler: util.GeneratePublicKeyHandler(),
+		PublicKeyHandler: util.GeneratePublicKeyHandler(globalConfig),
 	}
 	log.Fatal(server.ListenAndServe())
 }

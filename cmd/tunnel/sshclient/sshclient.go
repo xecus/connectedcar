@@ -4,43 +4,37 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/xecus/connectedcar/config"
 	"github.com/xecus/connectedcar/tunnel"
 	"github.com/xecus/connectedcar/tunnel/util"
 )
 
-// local service to be forwarded
-var localEndpoint = tunnel.PortFowardEndpoint{
-	Host: "localhost",
-	Port: 8090,
-}
-
-// remote SSH server
-var serverEndpoint = tunnel.SSHServerEndpoint{
-	Host: "localhost",
-	Port: 2222,
-}
-
-// remote forwarding port (on remote SSH server network)
-var remoteEndpoint = tunnel.PortFowardEndpoint{
-	Host: "localhost",
-	Port: 8080,
-}
-
 func SshConnectionClient(globalConfig *config.GlobalConfig, ctx context.Context) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	homeDirPath, err := os.UserHomeDir()
+	if err != nil {
+		panic("Could not get homeDir")
+	}
+	privateKeyPath := filepath.Join(homeDirPath, ".ssh", "id_rsa")
+
+	//TODO: Check Pubkey Permission
+
 	tunnelConfig := &tunnel.TunnelConfig{
+		// FIXME
 		SshServerEndpoint: &tunnel.SSHServerEndpoint{
 			Host: "localhost",
 			Port: 2222,
 		},
+		// FIXME
 		SshClientConfig: &tunnel.SSHClientConfig{
 			User:          "admin+xxx",
-			PublicKeyPath: "/home/hiroyuki/id_rsa",
+			PublicKeyPath: privateKeyPath,
 		},
 		LocalToRemoteForwarder: []*tunnel.PortfowardSrcDst{},
 		RemoteToLocalForwarder: []*tunnel.PortfowardSrcDst{

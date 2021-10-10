@@ -10,6 +10,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
+	"github.com/xecus/connectedcar/config"
 )
 
 func setWinsize(f *os.File, w, h int) {
@@ -17,7 +18,7 @@ func setWinsize(f *os.File, w, h int) {
 		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
 }
 
-func GenerateSessionHandler() func(ssh.Session) {
+func GenerateSessionHandler(globalConfig *config.GlobalConfig) func(ssh.Session) {
 	return func(s ssh.Session) {
 		cmd := exec.Command("/bin/bash")
 		ptyReq, winCh, isPty := s.Pty()

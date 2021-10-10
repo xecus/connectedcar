@@ -4,12 +4,15 @@ import (
 	"encoding/base64"
 	"io/ioutil"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/xecus/connectedcar/config"
 	gossh "golang.org/x/crypto/ssh"
 )
 
-func GeneratePublicKeyHandler() ssh.PublicKeyHandler {
+func GeneratePublicKeyHandler(globalConfig *config.GlobalConfig) ssh.PublicKeyHandler {
 	return func(ctx ssh.Context, key ssh.PublicKey) bool {
 		user := ctx.User()
 		sessionId := ctx.SessionID()
@@ -26,14 +29,24 @@ func GeneratePublicKeyHandler() ssh.PublicKeyHandler {
 		log.Println("localAddr =", localAddr)
 		log.Println("publicKeyString=", publicKeyString)
 
-		data, err := ioutil.ReadFile("/home/hiroyuki/.ssh/id_rsa.pub")
+		// Find PubKey undeer $HOME/.ssh
+		homeDirPath, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		pubKeyPath := filepath.Join(homeDirPath, ".ssh", "id_rsa.pub")
+
+		//FIXME
+		data, err := ioutil.ReadFile(pubKeyPath)
 		if err != nil {
 			log.Fatal("Error: ioutil.ReadFile", err)
+			return false
 		}
 
 		allowedKey, _, _, _, err := ssh.ParseAuthorizedKey(data)
 		if err != nil {
 			log.Fatal("Error: ssh.ParseAuthorizedKey", err)
+			return false
 		}
 
 		log.Println("GivenKey", gossh.FingerprintLegacyMD5(key))

@@ -25,10 +25,8 @@ func main() {
 		log.Println("Server")
 		sshserver.SshdWithPortForwarding(globalConfig)
 	case "client":
-
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 		defer stop()
-
 		log.Println("Client")
 		sshclient.SshConnectionClient(globalConfig, ctx)
 	default:
