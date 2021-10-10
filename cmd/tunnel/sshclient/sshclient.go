@@ -1,142 +1,97 @@
 package sshclient
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
-	"net"
-	"time"
 
 	"github.com/xecus/connectedcar/config"
-	"golang.org/x/crypto/ssh"
+	"github.com/xecus/connectedcar/tunnel"
+	"github.com/xecus/connectedcar/tunnel/util"
 )
 
-type Endpoint struct {
-	Host string
-	Port int
-}
-
-func (endpoint *Endpoint) String() string {
-	return fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port)
-}
-
-// From https://sosedoff.com/2015/05/25/ssh-port-forwarding-with-go.html
-// Handle local client connections and tunnel data to the remote server
-// Will use io.Copy - http://golang.org/pkg/io/#Copy
-func handleClient(client net.Conn, remote net.Conn) {
-	defer client.Close()
-	chDone := make(chan bool)
-
-	// Start remote -> local data transfer
-	go func() {
-		_, err := io.Copy(client, remote)
-		if err != nil {
-			log.Println(fmt.Sprintf("error while copy remote->local: %s", err))
-		}
-		chDone <- true
-	}()
-
-	// Start local -> remote data transfer
-	go func() {
-		_, err := io.Copy(remote, client)
-		if err != nil {
-			log.Println(fmt.Sprintf("error while copy local->remote: %s", err))
-		}
-		chDone <- true
-	}()
-
-	<-chDone
-}
-
-func publicKeyFile(file string) ssh.AuthMethod {
-	buffer, err := ioutil.ReadFile(file)
-	if err != nil {
-		log.Fatalln(fmt.Sprintf("Cannot read SSH public key file %s", file))
-		return nil
-	}
-
-	key, err := ssh.ParsePrivateKey(buffer)
-	if err != nil {
-		log.Fatalln(fmt.Sprintf("Cannot parse SSH public key file %s", file))
-		return nil
-	}
-	return ssh.PublicKeys(key)
-}
-
 // local service to be forwarded
-var localEndpoint = Endpoint{
+var localEndpoint = tunnel.PortFowardEndpoint{
 	Host: "localhost",
 	Port: 8090,
 }
 
 // remote SSH server
-var serverEndpoint = Endpoint{
-	//Host: "34.146.73.112",
+var serverEndpoint = tunnel.SSHServerEndpoint{
 	Host: "localhost",
 	Port: 2222,
 }
 
 // remote forwarding port (on remote SSH server network)
-var remoteEndpoint = Endpoint{
+var remoteEndpoint = tunnel.PortFowardEndpoint{
 	Host: "localhost",
 	Port: 8080,
 }
 
-func SshConnectionClient(globalConfig *config.GlobalConfig) {
+func SshConnectionClient(globalConfig *config.GlobalConfig, ctx context.Context) {
 
-	// refer to https://godoc.org/golang.org/x/crypto/ssh for other authentication types
-	sshConfig := &ssh.ClientConfig{
-		// SSH connection username
-		User: "admin+xxx",
-		Auth: []ssh.AuthMethod{
-			// put here your private key path
-			publicKeyFile("/home/hiroyuki/id_rsa"),
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	tunnelConfig := &tunnel.TunnelConfig{
+		SshServerEndpoint: &tunnel.SSHServerEndpoint{
+			Host: "localhost",
+			Port: 2222,
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		SshClientConfig: &tunnel.SSHClientConfig{
+			User:          "admin+xxx",
+			PublicKeyPath: "/home/hiroyuki/id_rsa",
+		},
+		LocalToRemoteForwarder: []*tunnel.PortfowardSrcDst{},
+		RemoteToLocalForwarder: []*tunnel.PortfowardSrcDst{
+			// 8080 -> 8090
+			&tunnel.PortfowardSrcDst{
+				Src: &tunnel.PortFowardEndpoint{
+					Host: "localhost",
+					Port: 8080,
+				},
+				Dst: &tunnel.PortFowardEndpoint{
+					Host: "localhost",
+					Port: 8090,
+				},
+			},
+			// 8081 -> 8090
+			&tunnel.PortfowardSrcDst{
+				Src: &tunnel.PortFowardEndpoint{
+					Host: "localhost",
+					Port: 8081,
+				},
+				Dst: &tunnel.PortFowardEndpoint{
+					Host: "localhost",
+					Port: 22,
+				},
+			},
+		},
 	}
 
-	// Connect to SSH remote server using serverEndpoint
-	log.Println("Dialing...", serverEndpoint.String())
-	serverConn, err := ssh.Dial("tcp", serverEndpoint.String(), sshConfig)
+	sshClient, err := util.NewSSHClient(tunnelConfig)
 	if err != nil {
-		log.Fatalln(fmt.Printf("Dial INTO remote server error: %s", err))
+		panic("Failed to Init SSH Connection")
 	}
-	log.Println("OK")
+	defer sshClient.Close()
+	go sshClient.KeepAlive(ctx)
 
 	// Listen on remote server port
-	log.Println("Listen on remote server port...")
-	listener, err := serverConn.Listen("tcp", remoteEndpoint.String())
+	err = sshClient.ListenPortOnRemote()
 	if err != nil {
-		log.Fatalln(fmt.Printf("Listen open port ON remote server error: %s", err))
+		panic("Failed to Listen Remote Port")
 	}
-	defer listener.Close()
-	log.Println("OK")
+	for _, listener := range sshClient.GetRemoteListeners() {
+		defer func() {
+			log.Printf("Called.")
+			listener.Close()
+		}()
+	}
+	go sshClient.BridgeLocalAndRemoteConnection(ctx)
 
-	// handle incoming connections on reverse forwarded tunnel
-	for {
-		// Open a (local) connection to localEndpoint whose content will be forwarded so serverEndpoint
-		log.Println("Open Local Connection...", localEndpoint.String())
-		local, err := net.Dial("tcp", localEndpoint.String())
-		if err != nil {
-			//log.Fatalln(fmt.Printf("Dial INTO local service error: %s", err))
-			log.Println(fmt.Printf("Dial INTO local service error: %s", err))
-			time.Sleep(1.0)
-			continue
-		}
-		log.Println("OK")
-
-		log.Println("Open Listener...")
-		client, err := listener.Accept()
-		if err != nil {
-			//log.Fatalln(err)
-			log.Println(err)
-			time.Sleep(1.0)
-			continue
-		}
-		log.Println("OK")
-
-		handleClient(client, local)
+	select {
+	case <-ctx.Done():
+		fmt.Println(ctx.Err())
 	}
 
 }

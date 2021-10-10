@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
 
 	"github.com/xecus/connectedcar/cmd/tunnel/sshclient"
 	"github.com/xecus/connectedcar/cmd/tunnel/sshserver"
@@ -22,8 +25,12 @@ func main() {
 		log.Println("Server")
 		sshserver.SshdWithPortForwarding(globalConfig)
 	case "client":
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+		defer stop()
+
 		log.Println("Client")
-		sshclient.SshConnectionClient(globalConfig)
+		sshclient.SshConnectionClient(globalConfig, ctx)
 	default:
 		log.Println("Default")
 	}

@@ -35,51 +35,39 @@ func initAppConfig() AppConfig {
 }
 
 // データベース関連設定
-type RedisConfigConfig struct {
-	Host            string
-	Username        string
-	Password        string
-	RedisConfigName string
-	PortNum         int
+type RedisConfig struct {
+	Addr     string
+	Password string
+	Database int
 }
 
-func initRedisConfigConfig() RedisConfigConfig {
-	host := os.Getenv("DB_HOST")
-	if host == "" {
+func initRedisConfig() RedisConfig {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
 		//panic("Config Error: DB_HOST must be set")
 	}
-	username := os.Getenv("DB_USER")
-	if username == "" {
-		//panic("Config Error: DB_USER must be set")
-	}
-	password := os.Getenv("DB_PASS")
+	password := os.Getenv("REDIS_PASSWORDS")
 	if password == "" {
 		//panic("Config Error: DB_PASS must be set")
 	}
-	databaseName := os.Getenv("DB_NAME")
-	if databaseName == "" {
-		//panic("Config Error: DB_NAME must be set")
-	}
-	portNumStr := os.Getenv("DB_PORT")
-	if portNumStr == "" {
+	databaseStr := os.Getenv("REDIS_DATABASE")
+	if databaseStr == "" {
 		//panic("Config Error: DB_PORT must be set")
 	}
-	portNumInt, err := strconv.Atoi(portNumStr)
+	databaseInt, err := strconv.Atoi(databaseStr)
 	if err != nil {
 		//panic("Config Error: DB_PORT must be valid integer")
 	}
-	return RedisConfigConfig{
-		Host:            host,
-		Username:        username,
-		Password:        password,
-		RedisConfigName: databaseName,
-		PortNum:         portNumInt,
+	return RedisConfig{
+		Addr:     addr,
+		Password: password,
+		Database: databaseInt,
 	}
 }
 
 type GlobalConfig struct {
 	AppConfig
-	RedisConfigConfig
+	RedisConfig
 }
 
 var Config GlobalConfig
@@ -88,8 +76,8 @@ var Config GlobalConfig
 
 func NewConfig() (*GlobalConfig, error) {
 	tmp := GlobalConfig{
-		AppConfig:         initAppConfig(),
-		RedisConfigConfig: initRedisConfigConfig(),
+		AppConfig:   initAppConfig(),
+		RedisConfig: initRedisConfig(),
 	}
 	Config = tmp
 	return &Config, nil
